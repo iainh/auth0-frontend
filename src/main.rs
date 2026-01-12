@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use askama::Template;
-use askama_axum::IntoResponse;
 use auth0_mgmt_api::{
     types::{
         clients::ListClientsParams,
@@ -14,10 +13,20 @@ use auth0_mgmt_api::{
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, Redirect},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Form, Router,
 };
+
+fn render<T: Template>(template: T) -> Response {
+    match template.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            tracing::error!("Template rendering failed: {:?}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Template error").into_response()
+        }
+    }
+}
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -70,8 +79,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[template(path = "index.html")]
 struct IndexTemplate;
 
-async fn index() -> impl IntoResponse {
-    IndexTemplate
+async fn index() -> Response {
+    render(IndexTemplate)
 }
 
 #[derive(Deserialize, Default)]
@@ -127,22 +136,20 @@ async fn list_users(
     let is_htmx = headers.get("hx-request").is_some();
 
     if is_htmx {
-        UsersTableTemplate {
+        render(UsersTableTemplate {
             users,
             page,
             total_pages,
-        }
-        .into_response()
+        })
     } else {
-        UsersListTemplate {
+        render(UsersListTemplate {
             users,
             page,
             total_pages,
             search_query: query.q.unwrap_or_default(),
             connection: query.connection.unwrap_or_default(),
             connections,
-        }
-        .into_response()
+        })
     }
 }
 
@@ -194,12 +201,11 @@ async fn create_user(
     match client.users().create(request).await {
         Ok(_) => {
             let users = client.users().list(None).await.unwrap_or_default();
-            UsersTableTemplate {
+            render(UsersTableTemplate {
                 users,
                 page: 0,
                 total_pages: 1,
-            }
-            .into_response()
+            })
         }
         Err(e) => {
             tracing::error!("Failed to create user: {:?}", e);
@@ -216,7 +222,7 @@ struct UserDetailTemplate {
 
 async fn get_user(State(client): State<AppState>, Path(id): Path<String>) -> Response {
     match client.users().get(UserId::new(&id)).await {
-        Ok(user) => UserDetailTemplate { user }.into_response(),
+        Ok(user) => render(UserDetailTemplate { user }),
         Err(_) => (StatusCode::NOT_FOUND, "User not found").into_response(),
     }
 }
@@ -269,20 +275,18 @@ async fn update_user(
     };
 
     match client.users().update(UserId::new(&id), request).await {
-        Ok(_) => ToastTemplate {
+        Ok(_) => render(ToastTemplate {
             toast_type: "success".to_string(),
             title: "Success".to_string(),
             message: "User updated successfully".to_string(),
-        }
-        .into_response(),
+        }),
         Err(e) => {
             tracing::error!("Failed to update user: {:?}", e);
-            ToastTemplate {
+            render(ToastTemplate {
                 toast_type: "danger".to_string(),
                 title: "Error".to_string(),
                 message: "Failed to update user".to_string(),
-            }
-            .into_response()
+            })
         }
     }
 }
@@ -319,12 +323,11 @@ async fn toggle_block_user(
 
             if is_htmx_partial {
                 let users = client.users().list(None).await.unwrap_or_default();
-                UsersTableTemplate {
+                render(UsersTableTemplate {
                     users,
                     page: 0,
                     total_pages: 1,
-                }
-                .into_response()
+                })
             } else {
                 Redirect::to(&format!("/users/{}", id)).into_response()
             }
@@ -351,7 +354,7 @@ async fn get_user_logs(State(client): State<AppState>, Path(id): Path<String>) -
     };
 
     match client.users().get_logs(UserId::new(&id), Some(params)).await {
-        Ok(logs) => UserLogsTemplate { logs }.into_response(),
+        Ok(logs) => render(UserLogsTemplate { logs }),
         Err(_) => Html("<p class='text-muted'>Unable to load logs</p>").into_response(),
     }
 }
@@ -388,9 +391,9 @@ async fn list_connections(
     let is_htmx = headers.get("hx-request").is_some();
 
     if is_htmx {
-        ConnectionsTableTemplate { connections }.into_response()
+        render(ConnectionsTableTemplate { connections })
     } else {
-        ConnectionsListTemplate { connections }.into_response()
+        render(ConnectionsListTemplate { connections })
     }
 }
 
@@ -422,9 +425,9 @@ async fn list_applications(
     let is_htmx = headers.get("hx-request").is_some();
 
     if is_htmx {
-        ApplicationsTableTemplate { applications }.into_response()
+        render(ApplicationsTableTemplate { applications })
     } else {
-        ApplicationsListTemplate { applications }.into_response()
+        render(ApplicationsListTemplate { applications })
     }
 }
 
@@ -474,19 +477,17 @@ async fn list_logs(
     let is_htmx = headers.get("hx-request").is_some();
 
     if is_htmx {
-        LogsTableTemplate {
+        render(LogsTableTemplate {
             logs,
             page,
             total_pages,
-        }
-        .into_response()
+        })
     } else {
-        LogsListTemplate {
+        render(LogsListTemplate {
             logs,
             page,
             total_pages,
             search_query: query.q.unwrap_or_default(),
-        }
-        .into_response()
+        })
     }
 }
