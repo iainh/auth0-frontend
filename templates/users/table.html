@@ -1,0 +1,109 @@
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th></th>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Connection</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>
+                        {% match user.picture %}
+                        {% when Some with (picture) %}
+                        <img src="{{ picture }}" alt="" class="user-avatar">
+                        {% when None %}
+                        <div class="user-avatar bg-secondary d-flex align-items-center justify-content-center text-white">
+                            <i class="bi bi-person"></i>
+                        </div>
+                        {% endmatch %}
+                    </td>
+                    <td>
+                        {{ user.email.as_deref().unwrap_or("-") }}
+                        {% if user.email_verified.unwrap_or(false) %}
+                        <i class="bi bi-check-circle-fill text-success ms-1" title="Verified"></i>
+                        {% endif %}
+                    </td>
+                    <td>{{ user.name.as_deref().unwrap_or("-") }}</td>
+                    <td>
+                        {% match user.identities %}
+                        {% when Some with (identities) %}
+                        {% if let Some(identity) = identities.first() %}
+                        <span class="badge bg-secondary">{{ identity.connection }}</span>
+                        {% endif %}
+                        {% when None %}
+                        {% endmatch %}
+                    </td>
+                    <td>
+                        {% if user.blocked.unwrap_or(false) %}
+                        <span class="badge bg-danger">Blocked</span>
+                        {% else %}
+                        <span class="badge bg-success">Active</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% match user.last_login %}
+                        {% when Some with (last_login) %}
+                        {{ last_login }}
+                        {% when None %}
+                        Never
+                        {% endmatch %}
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <a href="/users/{{ user.user_id }}" class="btn btn-outline-primary" title="View">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <button class="btn btn-outline-warning"
+                                    hx-post="/users/{{ user.user_id }}/toggle-block"
+                                    hx-target="#users-table"
+                                    hx-swap="innerHTML"
+                                    hx-confirm="Are you sure you want to {% if user.blocked.unwrap_or(false) %}unblock{% else %}block{% endif %} this user?"
+                                    title="{% if user.blocked.unwrap_or(false) %}Unblock{% else %}Block{% endif %}">
+                                <i class="bi bi-{% if user.blocked.unwrap_or(false) %}unlock{% else %}lock{% endif %}"></i>
+                            </button>
+                            <button class="btn btn-outline-danger"
+                                    hx-delete="/users/{{ user.user_id }}"
+                                    hx-target="#users-table"
+                                    hx-swap="innerHTML"
+                                    hx-confirm="Are you sure you want to delete this user? This cannot be undone."
+                                    title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">No users found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if total_pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {% if page == 0 %}disabled{% endif %}">
+            <a class="page-link" hx-get="/users?page={{ page - 1 }}" hx-target="#users-table" hx-swap="innerHTML">Previous</a>
+        </li>
+        {% for p in 0..total_pages %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" hx-get="/users?page={{ p }}" hx-target="#users-table" hx-swap="innerHTML">{{ p + 1 }}</a>
+        </li>
+        {% endfor %}
+        <li class="page-item {% if page >= total_pages - 1 %}disabled{% endif %}">
+            <a class="page-link" hx-get="/users?page={{ page + 1 }}" hx-target="#users-table" hx-swap="innerHTML">Next</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}

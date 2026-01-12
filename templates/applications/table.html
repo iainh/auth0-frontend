@@ -1,0 +1,45 @@
+<div class="row g-4">
+    {% for app in applications %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <h5 class="card-title mb-0">{{ app.name.as_deref().unwrap_or("Unnamed") }}</h5>
+                    {% match app.app_type %}
+                    {% when Some with (app_type) %}
+                    <span class="badge bg-info">{{ app_type|fmt("{:?}") }}</span>
+                    {% when None %}
+                    {% endmatch %}
+                </div>
+                
+                {% match app.description %}
+                {% when Some with (description) %}
+                <p class="card-text small text-muted">{{ description }}</p>
+                {% when None %}
+                {% endmatch %}
+                
+                <div class="mb-2">
+                    <small class="text-muted">Client ID:</small>
+                    <code class="small d-block text-truncate">{{ app.client_id }}</code>
+                </div>
+                
+                {% if app.is_first_party.unwrap_or(false) %}
+                <span class="badge bg-success me-1">First Party</span>
+                {% endif %}
+                {% if app.oidc_conformant.unwrap_or(false) %}
+                <span class="badge bg-secondary">OIDC</span>
+                {% endif %}
+            </div>
+            <div class="card-footer bg-transparent">
+                <a href="/applications/{{ app.client_id }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-gear me-1"></i>Settings
+                </a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="alert alert-info">No applications found</div>
+    </div>
+    {% endfor %}
+</div>
