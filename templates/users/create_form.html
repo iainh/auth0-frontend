@@ -1,0 +1,59 @@
+<form id="create-user-form" hx-post="/users" hx-target="#create-user-form" hx-swap="outerHTML">
+    <div class="modal-body">
+        {% if errors.has_error("_base") %}
+        <div class="alert alert-danger">{{ errors.first("_base").unwrap() }}</div>
+        {% endif %}
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Email *</label>
+                <input type="email" class="form-control {{ errors.invalid_class("email") }}" name="email" required value="{{ form.email }}">
+                {% if errors.has_error("email") %}
+                <div class="invalid-feedback">{{ errors.first("email").unwrap() }}</div>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Connection *</label>
+                <select class="form-select {{ errors.invalid_class("connection") }}" name="connection" required>
+                    {% for conn in connections %}
+                    <option value="{{ conn }}" {% if form.connection == *conn %}selected{% endif %}>{{ conn }}</option>
+                    {% endfor %}
+                </select>
+                {% if errors.has_error("connection") %}
+                <div class="invalid-feedback">{{ errors.first("connection").unwrap() }}</div>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Password *</label>
+                <input type="password" class="form-control {{ errors.invalid_class("password") }}" name="password" required minlength="8">
+                {% if errors.has_error("password") %}
+                <div class="invalid-feedback">{{ errors.first("password").unwrap() }}</div>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Username</label>
+                <input type="text" class="form-control" name="username" value="{{ form.username.as_deref().unwrap_or("") }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Given Name</label>
+                <input type="text" class="form-control" name="given_name" value="{{ form.given_name.as_deref().unwrap_or("") }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Family Name</label>
+                <input type="text" class="form-control" name="family_name" value="{{ form.family_name.as_deref().unwrap_or("") }}">
+            </div>
+            <div class="col-12">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" name="verify_email" id="verifyEmail" {% if form.verify_email.is_some() %}checked{% endif %}>
+                    <label class="form-check-label" for="verifyEmail">Send verification email</label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+            <span class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+            Create User
+        </button>
+    </div>
+</form>

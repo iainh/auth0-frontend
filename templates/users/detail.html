@@ -76,11 +76,17 @@
                 <h6 class="mb-0"><i class="bi bi-pencil me-2"></i>Edit User</h6>
             </div>
             <div class="card-body">
-                <form hx-patch="/users/{{ user.user_id }}" hx-target="#toast-container" hx-swap="innerHTML">
+                <form id="edit-user-form" hx-patch="/users/{{ user.user_id }}" hx-target="body" hx-swap="innerHTML">
+                    {% if errors.has_error("_base") %}
+                    <div class="alert alert-danger">{{ errors.first("_base").unwrap() }}</div>
+                    {% endif %}
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="email" value="{{ user.email.as_deref().unwrap_or("") }}">
+                            <input type="email" class="form-control {{ errors.invalid_class("email") }}" name="email" value="{{ user.email.as_deref().unwrap_or("") }}">
+                            {% if errors.has_error("email") %}
+                            <div class="invalid-feedback">{{ errors.first("email").unwrap() }}</div>
+                            {% endif %}
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Username</label>
@@ -104,11 +110,17 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label">Picture URL</label>
-                            <input type="url" class="form-control" name="picture" value="{{ user.picture.as_deref().unwrap_or("") }}">
+                            <input type="url" class="form-control {{ errors.invalid_class("picture") }}" name="picture" value="{{ user.picture.as_deref().unwrap_or("") }}">
+                            {% if errors.has_error("picture") %}
+                            <div class="invalid-feedback">{{ errors.first("picture").unwrap() }}</div>
+                            {% endif %}
                         </div>
                         <div class="col-12">
                             <label class="form-label">New Password (leave blank to keep current)</label>
-                            <input type="password" class="form-control" name="password" minlength="8">
+                            <input type="password" class="form-control {{ errors.invalid_class("password") }}" name="password" minlength="8">
+                            {% if errors.has_error("password") %}
+                            <div class="invalid-feedback">{{ errors.first("password").unwrap() }}</div>
+                            {% endif %}
                         </div>
                         <div class="col-12">
                             <button type="submit" class="btn btn-primary">

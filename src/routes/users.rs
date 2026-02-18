@@ -9,13 +9,15 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
+use htmx_form_errors::FormErrors;
 use serde::Deserialize;
+use validator::Validate;
 
 use crate::errors::{AppError, AppResult};
 use crate::helpers::{htmx_target_is, is_htmx_request, total_pages};
 use crate::routes::connections::get_connection_names;
 use crate::state::AppState;
-use crate::templates::{render, ToastTemplate, ToastType};
+use crate::templates::render;
 
 #[derive(Template)]
 #[template(path = "users/list.html")]
@@ -26,6 +28,8 @@ struct ListTemplate {
     search_query: String,
     connection: String,
     connections: Vec<String>,
+    form: CreateForm,
+    errors: FormErrors,
 }
 
 #[derive(Template)]
@@ -40,6 +44,15 @@ struct TableTemplate {
 #[template(path = "users/detail.html")]
 struct DetailTemplate {
     user: auth0_mgmt_api::types::users::User,
+    errors: FormErrors,
+}
+
+#[derive(Template)]
+#[template(path = "users/create_form.html")]
+struct CreateFormTemplate {
+    form: CreateForm,
+    connections: Vec<String>,
+    errors: FormErrors,
 }
 
 #[derive(Template)]
@@ -98,14 +111,19 @@ pub async fn list(
             search_query: query.q.unwrap_or_default(),
             connection: query.connection.unwrap_or_default(),
             connections,
+            form: CreateForm::default(),
+            errors: FormErrors::new(),
         })
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Default, Validate)]
 pub struct CreateForm {
+    #[validate(email(message = "Must be a valid email address"))]
     email: String,
+    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
     password: String,
+    #[validate(length(min = 1, message = "Connection is required"))]
     connection: String,
     username: Option<String>,
     given_name: Option<String>,
@@ -117,6 +135,22 @@ pub async fn create(
     State(state): State<AppState>,
     Form(form): Form<CreateForm>,
 ) -> AppResult<Response> {
+    let errors = match form.validate() {
+        Ok(_) => FormErrors::new(),
+        Err(e) => FormErrors::from(e),
+    };
+
+    if !errors.is_empty() {
+        let connections = get_connection_names(&state.client).await;
+        return render(CreateFormTemplate {
+            form,
+            connections,
+            errors,
+        });
+    }
+
+    let form_snapshot = form.clone();
+
     let name = match (&form.given_name, &form.family_name) {
         (Some(given), Some(family)) => Some(format!("{} {}", given, family)),
         (Some(given), None) => Some(given.clone()),
@@ -136,26 +170,34 @@ pub async fn create(
         ..Default::default()
     };
 
-    state
-        .client
-        .users()
-        .create(request)
-        .await
-        .map_err(|e| AppError::Auth0(e.to_string()))?;
+    match state.client.users().create(request).await {
+        Ok(_) => {
+            let users = match state.client.users().list(None).await {
+                Ok(users) => users,
+                Err(e) => {
+                    tracing::error!(error = ?e, "failed to list users after create");
+                    Vec::new()
+                }
+            };
 
-    let users = match state.client.users().list(None).await {
-        Ok(users) => users,
-        Err(e) => {
-            tracing::error!(error = ?e, "failed to list users after create");
-            Vec::new()
+            render(TableTemplate {
+                users,
+                page: 0,
+                total_pages: 1,
+            })
         }
-    };
-
-    render(TableTemplate {
-        users,
-        page: 0,
-        total_pages: 1,
-    })
+        Err(e) => {
+            tracing::error!(error = ?e, "failed to create user");
+            let mut errors = FormErrors::new();
+            errors.add_base(&format!("Failed to create user: {}", e));
+            let connections = get_connection_names(&state.client).await;
+            render(CreateFormTemplate {
+                form: form_snapshot,
+                connections,
+                errors,
+            })
+        }
+    }
 }
 
 pub async fn get(
@@ -172,18 +214,24 @@ pub async fn get(
             AppError::NotFound
         })?;
 
-    render(DetailTemplate { user })
+    render(DetailTemplate {
+        user,
+        errors: FormErrors::new(),
+    })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct UpdateForm {
+    #[validate(email(message = "Must be a valid email address"))]
     email: Option<String>,
     username: Option<String>,
     given_name: Option<String>,
     family_name: Option<String>,
     nickname: Option<String>,
     phone_number: Option<String>,
+    #[validate(url(message = "Must be a valid URL"))]
     picture: Option<String>,
+    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
     password: Option<String>,
 }
 
@@ -192,6 +240,21 @@ pub async fn update(
     Path(id): Path<String>,
     Form(form): Form<UpdateForm>,
 ) -> AppResult<Response> {
+    let errors = match form.validate() {
+        Ok(_) => FormErrors::new(),
+        Err(e) => FormErrors::from(e),
+    };
+
+    if !errors.is_empty() {
+        let user = state
+            .client
+            .users()
+            .get(UserId::new(&id))
+            .await
+            .map_err(|_| AppError::NotFound)?;
+        return render(DetailTemplate { user, errors });
+    }
+
     let name = match (&form.given_name, &form.family_name) {
         (Some(given), Some(family)) if !given.is_empty() && !family.is_empty() => {
             Some(format!("{} {}", given, family))
@@ -215,18 +278,29 @@ pub async fn update(
     };
 
     match state.client.users().update(UserId::new(&id), request).await {
-        Ok(_) => render(ToastTemplate {
-            toast_type: ToastType::Success,
-            title: "Success".to_string(),
-            message: "User updated successfully".to_string(),
-        }),
+        Ok(_) => {
+            let user = state
+                .client
+                .users()
+                .get(UserId::new(&id))
+                .await
+                .map_err(|_| AppError::NotFound)?;
+            render(DetailTemplate {
+                user,
+                errors: FormErrors::new(),
+            })
+        }
         Err(e) => {
             tracing::error!(error = ?e, %id, "failed to update user");
-            render(ToastTemplate {
-                toast_type: ToastType::Danger,
-                title: "Error".to_string(),
-                message: "Failed to update user".to_string(),
-            })
+            let mut errors = FormErrors::new();
+            errors.add_base(&format!("Failed to update user: {}", e));
+            let user = state
+                .client
+                .users()
+                .get(UserId::new(&id))
+                .await
+                .map_err(|_| AppError::NotFound)?;
+            render(DetailTemplate { user, errors })
         }
     }
 }
